@@ -4,8 +4,9 @@ import sys
 import subprocess
 import re
 import time
+import os.path
 
-workdir="/home/nsadm/jef/configs/"
+workdir="/home/nsadm/jef/config/"
 config_file=workdir + "project_uno.cfg"
 
 def validation(variable1, variable2, string2, variable_name1):
@@ -428,11 +429,11 @@ def define(username, server, command, port, app_name, key,jobid, date, type, sub
 if __name__ == '__main__':
 	script_name = string_split((sys.argv[0]), "/", -1)
 	#Folder config validation
-	try:
-		subprocess.call('ls ' + config_file,shell=False)
-	except OSError:
-		print "Folder or file cfg not exists, please change line 8 and 9 in this script"
-		sys.exit(1)	
+	if os.path.isfile(config_file):
+		pass
+	else:
+		print "Folder or file cfg not exists, please change line 8 in this script"
+		sys.exit(1)
 
 	from optparse import OptionParser
 	
