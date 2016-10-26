@@ -1,0 +1,478 @@
+#!/usr/bin/python
+
+import sys
+import subprocess
+import re
+import time
+
+workdir="/home/nsadm/jef/configs/"
+config_file=workdir + "project_uno.cfg"
+
+def validation(variable1, variable2, string2, variable_name1):
+	if  variable2 == string2:
+		if  variable1 == 'none':
+			print "Variable %s must be filled" % (variable_name1)
+			sys.exit(1)
+
+def find_index(lists,string):
+	return [x for x,y in enumerate(lists) if string in y]
+
+def find_string(list,string):
+	return [x for x in list if string in x]
+
+def check_list(list):
+	result = list[0].stdout.readlines()
+	for i in result:
+		print i
+
+def if_simple(variable, condition, true, false, flag = 'is', flag1 = 'equal' ):
+	if flag == 'in':
+		if condition in variable:
+			return true
+		else:
+			return false
+	else:
+		if variable == condition:
+			return true
+		else:
+			return false
+
+def if_then(variable, condition, true, flag = 'is', flag1 = 'equal'):
+	if flag1 == 'equal':
+		if flag == 'in':
+			if condition in variable:
+				return true
+		else:
+			if variable == condition:
+				return true
+	else:
+		if flag == 'in':
+			if condition not in variable:
+				return true
+		else:
+			if variable != condition:
+				return true
+
+def read_config(type):
+	if 'DETAIL' in type:
+		type=(type.split('_DETAIL'))[0]
+	file = open(config_file, 'r')
+	file_return = []
+	for i in file.readlines():
+		if string_split(i, None, 0) == type:
+			file_return.append(i)
+	file.close()
+	return file_return
+
+def date_parsing(format, date):
+	date = str(date)
+	YYYY=date[0:4]
+	MM=date[4:6]
+	DD=date[6:8]
+	HH24=date[8:10]
+	MI=date[10:12]
+	if format == 'YYYY-MM-DD':
+		date = '%s-%s-%s' % (YYYY,MM,DD)
+	elif format == 'YYYY_MM_DD':
+		date = '%s_%s_%s' % (YYYY,MM,DD)
+	elif format == 'YYYY-MM-DD HH24:MI':
+		date = '%s-%s-%s %s:%s' % (YYYY,MM,DD,HH24,MI)
+	else:
+		date = date
+	return date
+
+def string_split(string, delimiter1, pass1, delimiter2=None, pass2='none'):
+	if pass2 == 'none':
+		string=(string.split(delimiter1))[pass1]
+	else:
+		string=(((string.split(delimiter1))[pass1]).split(delimiter2))[pass2]
+	return string
+
+def command_parsing(command, type, key, date, app_name, log_folder, backup_folder, backup_type, format_date_log, format_date_backup_folder, keyword_specify, keyword2_level, keyword2_level_no, keyword2_value = 'none', grep_mode = 'zgrep', os = 'none'):
+	if command == 'check_logs':
+		grep = if_simple(backup_type, 'hourly', grep_mode, 'grep')
+		if keyword_specify == 'none' or keyword_specify == '1':
+			grep_command = '%s -H' % (grep)
+			zgrep_command = grep_mode + ' -a' + ' -H'
+		elif keyword_specify == '2' and keyword2_level == 'above':
+			grep_command = '%s -H -B %s' % (grep, keyword2_level_no)
+			zgrep_command = '%s -a -H -B %s' % (grep_mode, keyword2_level_no)
+		elif keyword_specify == '2' and keyword2_level == 'back':
+			print "%s ; %s ; %s" % (keyword_specify, keyword2_level, keyword2_level_no)
+			grep_command = '%s -H -A %s' % (grep, keyword2_level_no)
+			zgrep_command = '%s -a -H -A %s' % (grep_mode,keyword2_level_no)
+		if date == 'none':
+			if app_name == 'none':
+				if log_folder != backup_folder:
+					COMMAND = 'LC_ALL=C %s %s %s/* ' % (grep_command, key, log_folder)
+				else:
+					if backup_type == 'hourly':
+						time_now = time.strftime("%Y%m%d")
+						time_now = date_parsing(format_date_log, time_now)
+						COMMAND = 'LC_ALL=C %s %s %s/*%s* %s/*log ' % (grep_command, key, log_folder, time_now, log_folder)
+					else:
+						COMMAND = 'LC_ALL=C %s %s %s/*log ' % (grep_command, key, log_folder)
+			else:
+				if log_folder != backup_folder:
+					COMMAND = 'LC_ALL=C %s %s %s/*%s* ' % (grep_command, key, log_folder, app_name)
+				else:
+					COMMAND = 'LC_ALL=C %s %s %s/*%s* ' % (grep_command, key, log_folder, app_name)
+		else:
+			date_log = date_parsing(format_date_log, date)
+			if format_date_backup_folder != 'none':
+				date_backup_log = date_parsing(format_date_backup_folder, date)
+				if app_name == 'none':
+					COMMAND = 'LC_ALL=C %s %s %s/*%s*/* ' % (zgrep_command, key, backup_folder,date_backup_log)
+				else:
+					COMMAND = 'LC_ALL=C %s %s %s/*%s*/*%s* ' % (zgrep_command, key, backup_folder, date_backup_log, app_name)
+			else:
+				if app_name == 'none':
+					COMMAND = 'LC_ALL=C %s %s %s/*%s* ' % (zgrep_command, key, backup_folder,date_log)
+				else:
+					COMMAND = 'LC_ALL=C %s %s %s/*%s*/*%s* ' % (zgrep_command, key, backup_folder, date_log, app_name)
+	elif command == 'check_complete_logs':
+		if date == 'none':
+			COMMAND = 'grep -A 30 %s %s/%s ' % (keyword2_value, log_folder, app_name)
+		else:
+			format_date_backup_folder = if_simple(format_date_backup_folder,'none','YYYYMMDD', format_date_backup_folder)
+			date = date_parsing(format_date_backup_folder, date)
+			COMMAND = '%s -A 30 %s %s/LOG_%s_23_45/%s ' % (grep_mode, keyword2_value,backup_folder, date, app_name)
+	elif command == 'check_port':
+		COMMAND = 'ps -ef;netstat -avnop'
+	elif command == 'check_apps':
+		COMMAND = if_simple(os, 'HP', 'ps -efx', 'ps -ef')
+	return COMMAND
+
+def output_parsing(command, type, key, date, app_name, log_folder, backup_folder, backup_type, format_date_log, format_date_backup_folder, keyword_specify, keyword2_level, keyword2_level_no, ssh, number, config_list, keyword1, keyword2,subscriber, grep_mode = 'zgrep'):
+	global script_name
+	summary=[]
+	ip_existing = []
+	if command == 'check_logs':
+		if keyword_specify == 'none':
+			for x, y in enumerate(ssh):
+				result = y.stdout.readlines()
+				if result != []:
+					for i in result:
+						app_name1 = string_split(i, ':', 0)
+						app_name2 = string_split(app_name1, '/', -1)
+						if subscriber == 'none':
+							print (i.translate(None, '\n')).replace(app_name1, app_name2)
+						else:
+							if subscriber in i:
+								print (i.translate(None, '\n')).replace(app_name1, app_name2)
+		elif keyword_specify == '1':
+			type_list = []
+			config_list = read_config(type)
+			for i in config_list:
+				type_list.append(string_split(i, '\t', 9))
+			type_list = sorted(set(type_list))
+			for x, y in enumerate(ssh):
+				result = y.stdout.readlines()
+				if result != []:
+					for i in result:
+						app_name1 = string_split(i, ':', 0)
+						app_name2 = string_split(app_name1, '/', -1)
+						if any(ext in i for ext in type_list):
+							if subscriber == 'none':
+								print (i.translate(None, '\n')).replace(app_name1, app_name2)
+							else:
+								if subscriber in i:
+									print (i.translate(None, '\n')).replace(app_name1, app_name2)
+		elif keyword_specify == '2':
+			for x, y in enumerate(ssh):
+				result = y.stdout.readlines()
+				if result != []:
+					keyword2_value = 'NaN'
+					for i in result:
+						if keyword2 in i:
+							keyword2_value=keyword2 + string_split(i.translate(None, '\n'), keyword2, 1, None, 0)
+						if keyword1 in i:
+							app_name=string_split(i, ':', 0, '/',-1)
+							app_deleted=string_split(i, ':', 0) + ':'
+							date_summary = date_parsing(format_date_log, date)
+							server = string_split(config_list[x], '\t', 2)
+							#print "Appname: %s, app_deleted: %s, date_summary: %s, server: %s" % (app_name, app_deleted, date_summary, server)
+							if keyword2_value != 'NaN':
+								app_name=if_simple(app_name, 'log-', string_split(app_name, 'log-', 0) + 'log', app_name, 'in')
+								keyword2_value = string_split(keyword2_value, ':', 0)
+								summary.append(keyword2_value + ':' + app_name + ':' + server )
+								app_name_removed = string_split(i, ':', 0)
+								i=i.replace(app_name_removed, '')
+								if date == 'none':
+									print keyword2_value + ':' + i.translate(None, '\n')
+								else:
+									if date_summary in i:
+										print keyword2_value + ':' + i.translate(None, '\n')
+							else:
+								if date == 'none':
+									print app_name + ':' + keyword2_value + ':' + server + ':' + i.translate(None, '\n')
+								else:
+									if date_summary in i:
+										print app_name + ':' + keyword2_value + ':' + server + ':' + i.translate(None, '\n')
+								
+			summary = sorted(set(summary))
+			print "==================================================="
+			for i in summary:
+				keyword2_value = string_split(i, ':', 0)
+				app_name = string_split(i, ':', 1)
+				server = string_split(i, ':', 2)
+				#Revision 2016101421 to remove keyword1 on app_name
+				if keyword2_value != 'NaN' and keyword1 not in app_name:
+					if date == 'none':
+						print "%s -c check_complete_logs -j %s -s %s -a %s -t %s" % (script_name, keyword2_value, server,app_name, type)
+					else:
+						print "%s -c check_complete_logs -j %s -s %s -a %s -t %s -d %s" % (script_name, keyword2_value, server, app_name, type, date)
+			print "===================================================\n"
+	elif command == 'check_port':
+		port = key
+		port_check = []
+		process_check = []
+		config_list = read_config(type)
+		HOST = []
+		for ip in config_list:
+			host = string_split(ip, '\t', 2)
+			if ip != ip_existing[-1:]:
+				ip_existing.append(ip)
+				HOST.append(host)
+		for x, y in enumerate(ssh):
+			result = y.stdout.readlines()
+			server= HOST[x]
+			if result != []:
+				port_string=find_string(result, ':' + port + ' ')
+				if port_string != []:
+					listen_string=find_string(port_string, 'LISTEN')
+					if listen_string != []:
+						pid = string_split(listen_string[0], None, 6,'/',0)
+						process_string = find_string(result, pid)
+						port_check.append(port)
+						for i in process_string:
+							cut_string = string_split(i, None, 1)
+							if cut_string == pid:
+								process_name = (i.split(None))[7:]
+								process_check.append(server + "|" + pid +"|" + " ".join(process_name))
+		if port_check == []:
+			print "Port %s not available on %s" % (port, type)
+		elif process_check == []:
+			print "Process not found in port %s, it means no PID on that port" % (port)
+		else:
+			process_check = sorted(set(process_check))
+			for i in process_check:
+				server = string_split(i, "|", 0)
+				pid = string_split(i, "|", 1)
+				process_name = string_split(i, "|", 2)
+				print "Server: " + server
+				print "PID: " + pid
+				print "Process Name: " + process_name
+				print "==============="
+	elif command == 'check_apps':
+		app_file = workdir + "application_status.cfg"
+		app_list = []
+		HOST = []
+		file1 = open(app_file, 'r')
+		for k,i in enumerate(file1.readlines()):
+			try:
+				if string_split(i, None, 0) != '#':
+					app_list.append(i)
+			except IndexError:
+				print "Error on %s in line %s" % (app_file, k + 1)
+				sys.exit(1)
+		file1.close()
+		config_list = read_config(type)
+		for ip in config_list:
+			host = string_split(ip, '\t', 2)
+			if ip != ip_existing[-1:]:
+				ip_existing.append(ip)
+				HOST.append(host)
+		HOST = sorted(set(HOST))
+		for x, y in enumerate(ssh):
+			result = y.stdout.readlines()
+			server = HOST[x]
+			if result != []:
+				for k, j in enumerate(app_list):
+					ip = string_split(j, '\t', 0)
+					string = string_split(j, '\t', 1)
+					string = string.translate(None, '\n')
+					if server == ip:
+						if any(string in x for x in result) == False:
+							summary.append(server + '|' + string)
+		if summary == []:
+			print "%s: OK" % (type)
+		else:
+			for i in summary:
+				ip = string_split(i, '|', 0)
+				string = string_split(i , '|', 1)
+				print "[%s][%s] %s is Down" % (type, ip, string)
+
+def complete_logs(jobid, server, app_name, type, command, date = 'none'):
+	ssh=[]
+	flag = []
+	number=0
+	config_list = read_config(type)
+	for config in config_list:
+		username = string_split(config, '\t', 1)
+		ip = string_split(config, '\t', 2)
+		log_folder = string_split(config, '\t', 3)
+		backup_folder = string_split(config, '\t', 4)
+		backup_type = string_split(config, '\t', 5)
+		format_date_log = string_split(config, '\t', 6)
+		format_date_backup_folder = string_split(config, '\t', 7)
+		keyword_specify = string_split(config, '\t', 8)
+		keyword1 = string_split(config, '\t', 9)
+		keyword2 = string_split(config, '\t', 10)
+		keyword2_level = string_split(config, '\t', 11)
+		keyword2_level_no = string_split(config, '\t', 12)
+		if server == ip:			
+			jobid = if_simple(jobid, '[', jobid.replace("[", "\["),jobid, 'in')
+			jobid = if_simple(jobid, ']', jobid.replace("]", "\]"),jobid, 'in')
+			COMMAND=command_parsing(command, type, jobid, date, app_name, log_folder, backup_folder, backup_type, format_date_log, format_date_backup_folder, keyword_specify, keyword2_level, keyword2_level_no, jobid)
+			host = username + '@' + ip
+			p=subprocess.Popen(["ssh", "%s" % host,  COMMAND],shell=False,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+			ssh.insert(number, p)
+			number = number + 1
+
+	jobid = if_simple(jobid, '\[', jobid.replace("\[", "["), jobid, 'in')
+	jobid = if_simple(jobid, '\]', jobid.replace("\]", "]"), jobid, 'in')
+
+	result = ssh[0].stdout.readlines()
+	for i in result:
+		len_result = len(i)
+		delimiter = keyword2
+		if delimiter in i:
+			key_dict=delimiter + string_split(i, delimiter, 1, None, 0)
+			value_dict=result.index(i)
+			flag.append([key_dict,value_dict])
+	for idx, i in enumerate(flag):
+		job_flag = i[0]
+		line = i[1]
+		next_idx = idx + 1
+		try:
+			line_to = (flag[next_idx])[1]
+		except IndexError:
+			line_to = len_result - 1
+		if jobid in job_flag:
+			for j in (result[line:line_to]):
+				print j.translate(None, '\n')
+
+def checks(app_name, key, date, type, subscriber, command):
+	ssh=[]
+	ip_existing = []
+	number=0
+	key = str(key)
+	config_list = read_config(type)
+	for config in config_list:
+		username = string_split(config, '\t', 1)
+		ip = string_split(config, '\t', 2)
+		log_folder = string_split(config, '\t', 3)
+		backup_folder = string_split(config, '\t', 4)
+		backup_type = string_split(config, '\t', 5)
+		format_date_log = string_split(config, '\t', 6)
+		format_date_backup_folder = string_split(config, '\t', 7)
+		keyword_specify = string_split(config, '\t', 8)
+		keyword1 = string_split(config, '\t', 9)
+		keyword2 = string_split(config, '\t', 10)
+		keyword2_level = string_split(config, '\t', 11)
+		keyword2_level_no = string_split(config, '\t', 12)
+		grep_mode = string_split(config, '\t', 13)
+		os = string_split(config, '\t', 14)
+		if command == 'check_apps' or command == 'check_port':
+			if ip_existing != []:
+				ip_1 = (ip_existing[-1:])[0]
+			else:
+				ip_1 = ip_existing[-1:]
+			if ip != ip_1:
+				ip_existing.append(ip)
+				COMMAND=command_parsing(command, type, key, date, app_name, log_folder, backup_folder, backup_type, format_date_log, format_date_backup_folder, keyword_specify, keyword2_level, keyword2_level_no, keyword2_level, grep_mode, os)
+				host = username + '@' + ip
+				p=subprocess.Popen(["ssh", "%s" % host,  COMMAND],shell=False,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+				ssh.insert(number, p)
+				number = number + 1
+		else:				
+			COMMAND=command_parsing(command, type, key, date, app_name, log_folder, backup_folder, backup_type, format_date_log, format_date_backup_folder, keyword_specify, keyword2_level, keyword2_level_no)
+			#print COMMAND
+			host = username + '@' + ip
+			p=subprocess.Popen(["ssh", "%s" % host,  COMMAND],shell=False,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+			ssh.insert(number, p)
+			number = number + 1
+	output_parsing(command, type, key, date, app_name, log_folder, backup_folder, backup_type, format_date_log, format_date_backup_folder, keyword_specify, keyword2_level, keyword2_level_no, ssh, number, config_list, keyword1, keyword2,subscriber)
+
+def define(username, server, command, port, app_name, key,jobid, date, type, subscriber):
+	config_list = read_config(type)
+	check_eligible = string_split(config_list[0], '\t', 3)
+	if command == 'check_logs':
+		if check_eligible == 'none':
+			print "%s doesn't support to check_logs" % (type)
+		else:
+			#Custom
+			validation(app_name, type, 'TIBCO_MS', 'app_name')
+			validation(app_name, type, 'TIBCO_ANGIE', 'app_name')
+			#######
+			validation(key, command, 'check_logs', 'key')
+			checks(app_name, key,date,type, subscriber, command)
+	elif command == 'check_complete_logs':
+		if check_eligible == 'none':
+			print "%s doesn't support to check_logs" % (type)
+		else:
+			validation(jobid, command, 'check_complete_logs', 'jobid')
+			validation(app_name, command, 'check_complete_logs', 'app_name')
+			validation(server, command, 'check_complete_logs', 'server')
+			complete_logs(jobid, server, app_name, type, command, date)
+	elif command == 'check_port':
+		if check_eligible == 'none':
+			print "%s doesn't support to check_logs" % (type)
+		else:
+			validation(port, command, 'check_port', 'port')
+			checks('none', port, date, type, subscriber, command)
+	elif command == 'check_apps':
+		checks('none', 'none', date, type, subscriber, command)
+				
+if __name__ == '__main__':
+	script_name = string_split((sys.argv[0]), "/", -1)
+	#Folder config validation
+	try:
+		subprocess.call('ls ' + config_file,shell=False)
+	except OSError:
+		print "Folder or file cfg not exists, please change line 8 and 9 in this script"
+		sys.exit(1)	
+
+	from optparse import OptionParser
+	
+	parser = OptionParser(description='Welcome to Central VAS Log Search')
+	choices=['check_logs','check_complete_logs','check_port','check_apps']
+	file = open(config_file, 'r')
+	type = []
+	for file_list in file.readlines():
+		if string_split(file_list, None, 0) != '#':
+			type.append(string_split(file_list, None, 0))
+	file.close()
+	type = sorted(set(type))
+	parser.add_option("-c", dest="command", type='choice', choices=choices,
+						help='Choices are: '+', '.join(choices) +'.', default = ['none'], metavar='')
+	parser.add_option("-p", dest="port",
+						help="Port to search", metavar="port")
+	parser.add_option("-t", dest="type", type='choice', choices=type,
+						help='Type of logs. Type are '+', '.join(type), default=['none'], metavar="type")
+	parser.add_option("-s", dest="server",
+						help="Server destination", metavar="server")
+	parser.add_option("-a", dest="app_name",
+						help="Application to search", default="none",metavar="app_name")
+	parser.add_option("-k", dest="key",
+						help="Pattern want to search", default="none",metavar="key")
+	parser.add_option("-u", dest="username",
+						help="username of servers", default="none",metavar="username")
+	parser.add_option("-j", dest="jobid",
+						help="TIBCO apps jobid", default="none",metavar="Jobid")
+	parser.add_option("-d", dest="date",
+						help="Transaction date", default="none", metavar="date")
+	parser.add_option("-S", dest="subscriber",
+						help="Subscriber Msisdn", default="none", metavar="subscriber")
+	(options, args) = parser.parse_args()
+
+	if len(sys.argv)==1 or options.type[0] == 'none' or options.command[0] == 'none':
+		parser.print_help()
+		sys.exit(1)
+	try:
+		define(options.username, options.server, options.command, options.port,options.app_name, options.key,options.jobid, options.date, options.type, options.subscriber)
+	except (KeyboardInterrupt):
+		print ''
+		print "Keyboard interrupt"
+		print "You cancelling the process"

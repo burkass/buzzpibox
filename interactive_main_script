@@ -1,0 +1,156 @@
+#!/usr/bin/python
+
+import sys
+import subprocess
+import re
+import time
+import readline
+
+workdir="/home/nsadm/jef/config/"
+config_file=workdir + "project_uno.cfg"
+dict_file=workdir + "application_dictionary.cfg"
+
+def validation(variable1, variable2, string2, variable_name1):
+	if  variable2 == string2:
+		if  variable1 == 'none':
+			print "Variable %s must be filled" % (variable_name1)
+			sys.exit(1)
+
+def string_split(string, delimiter1, pass1, delimiter2=None, pass2='none'):
+	if pass2 == 'none':
+		string=(string.split(delimiter1))[pass1]
+	else:
+		string=(((string.split(delimiter1))[pass1]).split(delimiter2))[pass2]
+	return string
+
+def activity(list, number):
+	list_len = len(list)
+	number = int(number)
+	for i in range(list_len):
+		number1 = i + 1
+		if number == number1:
+			return list[i]
+	if list_len < number :
+		print 'Please check the correct number'
+		sys.exit(1)
+
+def print_list(list):
+	number = len(list)
+	for i in range(number):
+		choose_number = i + 1
+		print "%s. %s" % (choose_number, list[i])
+
+def print_list_custom(list):
+	number = len(list)
+	for i in range(number):
+		choose_number = i + 1
+		print "- %s" % (list[i])
+
+if __name__ == '__main__':
+	script_name = string_split((sys.argv[0]), "/", -1)
+	ssh = []
+
+	from optparse import OptionParser
+	choices=['check_logs','check_port','check_apps']
+	#Define type
+	file = open(config_file, 'r')
+	type = []
+	for file_list in file.readlines():
+		if string_split(file_list, None, 0) != '#':
+			type.append(string_split(file_list, None, 0))
+	file.close()
+	type = sorted(set(type))
+
+	file = open(dict_file, 'r')
+	app_dict = []
+	for file_list in file.readlines():
+		if string_split(file_list, None, 0) != '#':
+			app_dict.append(file_list.translate(None, '\n'))
+	file.close()
+	try:
+		subprocess.call('/usr/bin/clear',shell=True)
+		print '''Welcome to VAS searching logs interactive mode'''
+		print ''
+		print_list(choices)
+		print ''
+		choice = raw_input('Enter Activity number: ')
+		choice = activity(choices, choice)
+
+		print ''
+		print ''
+		print '''Please enter the application'''
+		print ''
+		if choice == 'check_logs' or choice == 'check_port':
+			type.remove('TIBCO_ANGIE')
+			type.remove('NS_USSD')
+
+		print_list(type)
+		print ''
+		type_no = raw_input('Enter the number: ')
+		type = activity(type, type_no)
+
+		if choice == 'check_logs':
+			if type == 'TIBCO_MS' or type == 'TIBCO_ANGIE' :
+				print ''
+				print ''
+				print "Please type TIBCO BW Name (All application type BW)"
+				print ''
+				print_list_custom(app_dict)
+				print ''
+				app = raw_input('Enter BW Name: ')
+				if app == '':
+					print "Please fill the BW application, script will exit"
+					sys.exit(1)
+			else:
+				app = ''
+
+			print ''
+			print ''
+			print "Please fill your key(MSISDN or keyid or NSID or voucherid)"
+			print ''
+			key = raw_input('Key: ')
+			if type == 'NS_ANGIE' or type == 'NS_JMR':
+				print ''
+				print "Please fill your subscriber: (Leave it blank if not used)"
+				print ''
+				subscriber = raw_input('Enter Subscriber: ')
+			else:
+				subscriber = ''
+
+			print ''
+			print ''
+			print "Please fill your date, format YYYYMMDD (leave it blank for today):"
+			print ''
+			date = raw_input("Enter Date: ")
+			print ''
+			if len(date) != 8 and date != '':
+				print "Your date format not YYYYMMDD, script will be exit"
+				sys.exit(1)
+
+			if date != '':
+				COMMAND = "main_script -c %s -t %s -k %s -d %s" % (choice, type, key, date)
+			else:
+				COMMAND = "main_script -c %s -t %s -k %s" % (choice, type, key)
+
+			if app != '':
+				COMMAND = "%s -a %s" % (COMMAND, app)
+
+			if subscriber != '':
+				COMMAND = "%s -S %s" % (COMMAND, subscriber)
+		elif choice == 'check_port':
+			print ''
+			print "Please fill port value:"
+			port = raw_input("Port: ")
+			COMMAND = "main_script -c %s -t %s -p %s" % (choice, type, port)
+		elif choice == 'check_apps':
+			COMMAND = "main_script -c %s -t %s" % (choice, type)
+
+		#Let's play
+		print COMMAND
+		print subprocess.Popen(COMMAND, shell=True, stdout=subprocess.PIPE).stdout.read()
+	except (KeyboardInterrupt):
+		print ''
+		print "Keyboard interrupt"
+		print "You cancelling the process"
+
+	
